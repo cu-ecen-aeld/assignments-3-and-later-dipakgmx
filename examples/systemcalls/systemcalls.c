@@ -1,4 +1,9 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -9,13 +14,9 @@
 */
 bool do_system(const char *cmd)
 {
-
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
+	if (system(cmd) != 0) {
+		return false;
+	}
 
     return true;
 }
@@ -40,28 +41,32 @@ bool do_exec(int count, ...)
     va_start(args, count);
     char * command[count+1];
     int i;
+    int status;
+    bool success = false;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
-/*
- * TODO:
- *   Execute a system command by calling fork, execv(),
- *   and wait instead of system (see LSP page 161).
- *   Use the command[0] as the full path to the command to execute
- *   (first argument to execv), and use the remaining arguments
- *   as second argument to the execv() command.
- *
-*/
+    
+    if (fork() == 0) {
+	    /* Child process */
+	    execv(command[0], command);
+	    perror("execv");
+	    exit(1);
+    }
+    else {
+	    /* Parent process */
+	    wait(&status);
+	    if (WIFEXITED(status) && (WEXITSTATUS(status) == 0)) {
+		    printf("Process exited successfully, exit status %d\n", WIFEXITED(status));
+		    success = true;
+	    }
+    }
 
     va_end(args);
 
-    return true;
+    return success;
 }
 
 /**
@@ -75,25 +80,47 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     va_start(args, count);
     char * command[count+1];
     int i;
+    int fd;
+    int status;
+    bool success = false;
+
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
+
+    fd = open(outputfile, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+    if (fd < 0) {
+	    perror("open");
+	    return false;
+    }
+
+ 
+    if (fork() == 0) {
+	    /* Child process */
+	    if (dup2(fd, 1) < 0) {
+		    perror("dup");
+		    abort();
+	    }
+	    close(fd);
+	    execv(command[0], command);
+	    perror("execv");
+	    exit(1);
+    }
+    else {
+	    /* Parent process */
+	    close(fd);
+	    wait(&status);
+	    if (WIFEXITED(status) && (WEXITSTATUS(status) == 0)) {
+		    printf("Process exited successfully, exit status %d\n", WIFEXITED(status));
+		    success = true;
+	    }
+    }
 
 
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
 
     va_end(args);
 
-    return true;
+    return success;
 }
